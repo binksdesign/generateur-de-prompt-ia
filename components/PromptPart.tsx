@@ -66,7 +66,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({ activeKey, activeLabel, pr
     
     return (
         <div 
-             className="fixed inset-0 z-30 animate-fade-in-backdrop"
+             className="fixed inset-0 z-50 animate-fade-in-backdrop"
              aria-modal="true"
              role="dialog"
         >
@@ -75,18 +75,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({ activeKey, activeLabel, pr
                 ref={panelRef}
                 className="fixed top-0 right-0 h-full w-full max-w-md bg-[#1c1e1d]/80 backdrop-blur-2xl border-l border-white/10 shadow-2xl flex flex-col animate-slide-in-right"
             >
-                <header className="p-6 flex items-center justify-between border-b border-white/10">
+                <header className="p-4 sm:p-6 flex items-center justify-between border-b border-white/10">
                     <h2 className="text-xl font-bold text-gray-100">Modifier "{activeLabel}"</h2>
                     <button 
                         onClick={onClose} 
-                        className="h-8 w-8 flex items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
+                        className="h-12 w-12 flex items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
                         aria-label="Fermer le panneau"
                     >
-                        <i className="fa-solid fa-times"></i>
+                        <i className="fa-solid fa-times text-2xl"></i>
                     </button>
                 </header>
 
-                <div className="p-6 flex-grow overflow-y-auto">
+                <div className="p-4 sm:p-6 flex-grow overflow-y-auto">
                     {/* Manual Edit Section */}
                     <div className="mb-6">
                         <label htmlFor="manual-edit" className="text-sm font-bold text-gray-400 mb-2 block">Édition manuelle</label>

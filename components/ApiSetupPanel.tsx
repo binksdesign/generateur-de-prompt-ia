@@ -1,7 +1,7 @@
 
 
-import React, { useState, useEffect } from 'react';
-import { ApiConfig } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ApiConfig, OpenRouterModel } from '../types';
 
 interface ApiSetupPanelProps {
     onConfigured: (config: ApiConfig) => void;
@@ -19,6 +19,39 @@ export const ApiSetupPanel: React.FC<ApiSetupPanelProps> = ({ onConfigured, onCl
     const [customModelId, setCustomModelId] = useState('');
     const [error, setError] = useState('');
 
+    const [models, setModels] = useState<OpenRouterModel[]>([]);
+    const [isLoadingModels, setIsLoadingModels] = useState(false);
+    const [modelSearch, setModelSearch] = useState('');
+
+    const fetchModels = useCallback(async () => {
+        setIsLoadingModels(true);
+        setError('');
+        setModels([]);
+        try {
+            const response = await fetch("https://openrouter.ai/api/v1/models");
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.error?.message || `La requête a échoué (${response.status})`);
+            }
+            const data = await response.json();
+            const sortedModels = (data.data as OpenRouterModel[]).sort((a, b) => {
+                const priceA = parseFloat(a.pricing.prompt) + parseFloat(a.pricing.output ?? a.pricing.completion);
+                const priceB = parseFloat(b.pricing.prompt) + parseFloat(b.pricing.output ?? b.pricing.completion);
+                if (isNaN(priceA)) return 1;
+                if (isNaN(priceB)) return -1;
+                if (priceA === 0 && priceB > 0) return -1;
+                if (priceB === 0 && priceA > 0) return 1;
+                if (priceA === priceB) return a.name.localeCompare(b.name);
+                return priceA - priceB;
+            });
+            setModels(sortedModels);
+        } catch (e: any) {
+            setError(`Impossible de charger les modèles: ${e.message}`);
+        } finally {
+            setIsLoadingModels(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (currentConfig) {
             setApiKey(currentConfig.apiKey);
@@ -29,9 +62,18 @@ export const ApiSetupPanel: React.FC<ApiSetupPanelProps> = ({ onConfigured, onCl
             } else {
                 setSelectionType('custom');
                 setCustomModelId(currentConfig.model);
+                fetchModels();
             }
         }
-    }, [currentConfig]);
+    }, [currentConfig, fetchModels]);
+
+    const handleSelectType = (type: SelectionType) => {
+        setSelectionType(type);
+        if (type === 'custom') {
+            fetchModels();
+        }
+    };
+
 
     const handleSubmit = () => {
         if (!apiKey.trim()) {
@@ -46,7 +88,7 @@ export const ApiSetupPanel: React.FC<ApiSetupPanelProps> = ({ onConfigured, onCl
             model = FREE_MODEL;
         } else if (selectionType === 'custom') {
             if (!customModelId.trim()) {
-                setError("Veuillez entrer l'identifiant du modèle personnalisé.");
+                setError("Veuillez sélectionner un modèle dans la liste.");
                 return;
             }
             model = customModelId.trim();
@@ -60,11 +102,16 @@ export const ApiSetupPanel: React.FC<ApiSetupPanelProps> = ({ onConfigured, onCl
         setError('');
         onConfigured({ apiKey: apiKey.trim(), model });
     };
+
+    const filteredModels = models.filter(model => 
+        model.name.toLowerCase().includes(modelSearch.toLowerCase()) ||
+        model.id.toLowerCase().includes(modelSearch.toLowerCase())
+    );
     
     const renderOptionButton = (type: SelectionType, title: string, description: string, priceInfo: React.ReactNode) => {
         return (
             <button
-                onClick={() => setSelectionType(type)}
+                onClick={() => handleSelectType(type)}
                 className={`p-4 rounded-lg border-2 text-left transition-all h-full flex flex-col justify-between ${selectionType === type ? 'border-[#D7FE40] bg-lime-500/10' : 'border-white/10 bg-white/5 hover:border-white/20'}`}
             >
                 <div>
@@ -77,8 +124,8 @@ export const ApiSetupPanel: React.FC<ApiSetupPanelProps> = ({ onConfigured, onCl
     }
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center animate-fade-in-backdrop" aria-modal="true" role="dialog">
-            <div className="bg-[#1c1e1d] border border-white/10 rounded-2xl shadow-2xl w-full max-w-2xl m-4 p-8 text-white animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-start overflow-y-auto p-4 animate-fade-in-backdrop" aria-modal="true" role="dialog">
+            <div className="bg-[#1c1e1d] border border-white/10 rounded-2xl shadow-2xl w-full max-w-2xl my-auto p-6 sm:p-8 text-white animate-fade-in">
                 <div className="flex justify-between items-start">
                     <h2 className="text-2xl font-bold mb-4">Configuration de l'API</h2>
                     {currentConfig && (
@@ -122,19 +169,57 @@ export const ApiSetupPanel: React.FC<ApiSetupPanelProps> = ({ onConfigured, onCl
                     </div>
                     
                     {selectionType === 'custom' && (
-                        <div className="animate-fade-in">
-                            <label htmlFor="custom-model-id" className="text-sm font-bold text-gray-300 mb-2 block">Identifiant du modèle personnalisé</label>
-                            <p className="text-xs text-gray-500 mb-2">
-                                Copiez et collez l'identifiant du modèle depuis OpenRouter.
-                            </p>
-                            <input
-                                id="custom-model-id"
-                                type="text"
-                                value={customModelId}
-                                onChange={(e) => setCustomModelId(e.target.value)}
-                                placeholder="ex: openai/gpt-4.1-mini"
-                                className="w-full bg-black/20 border border-white/10 rounded-lg py-2.5 px-3 text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D7FE40] focus:bg-black/30 transition-all font-mono text-sm"
-                            />
+                        <div className="animate-fade-in space-y-3 pt-4 border-t border-white/10 mt-4">
+                            <div>
+                                <label htmlFor="model-search" className="text-sm font-bold text-gray-300 mb-2 block">Rechercher un modèle</label>
+                                <input
+                                    id="model-search"
+                                    type="text"
+                                    value={modelSearch}
+                                    onChange={(e) => setModelSearch(e.target.value)}
+                                    placeholder="Chercher par nom ou ID..."
+                                    className="w-full bg-black/20 border border-white/10 rounded-lg py-2.5 px-3 text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D7FE40] focus:bg-black/30 transition-all"
+                                />
+                                 <p className="text-xs text-gray-400 mt-2">
+                                    Pour les tarifs exacts, consultez <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">les modèles sur OpenRouter</a>. La liste est mise à jour à chaque sélection.
+                                </p>
+                            </div>
+                            
+                            {isLoadingModels ? (
+                                <div className="flex justify-center items-center h-48">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#D7FE40]"></div>
+                                </div>
+                            ) : models.length > 0 ? (
+                                <div className="max-h-64 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                                    {filteredModels.map(model => {
+                                        const priceIn = parseFloat(model.pricing.prompt);
+                                        const priceOut = parseFloat(model.pricing.output ?? model.pricing.completion);
+                                        const isFree = isNaN(priceIn) || (priceIn === 0 && priceOut === 0);
+                                        return (
+                                            <button
+                                                key={model.id}
+                                                onClick={() => setCustomModelId(model.id)}
+                                                className={`w-full text-left p-3 rounded-lg border-2 transition-all ${customModelId === model.id ? 'border-[#D7FE40] bg-lime-500/10' : 'border-transparent bg-white/5 hover:bg-white/10'}`}
+                                            >
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <div>
+                                                        <p className="font-semibold text-white">{model.name}</p>
+                                                        <p className="text-xs text-gray-500 mt-1 font-mono">{model.id}</p>
+                                                    </div>
+                                                    {isFree ? (
+                                                        <span className="text-xs shrink-0 font-bold bg-lime-400/20 text-lime-300 px-2 py-1 rounded-full">Gratuit</span>
+                                                    ) : (
+                                                        <span className="text-xs shrink-0 font-bold bg-cyan-400/20 text-cyan-300 px-2 py-1 rounded-full">Payant</span>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        )
+                                    })}
+                                    {filteredModels.length === 0 && (
+                                        <p className="text-center text-gray-400 py-8">Aucun modèle trouvé.</p>
+                                    )}
+                                </div>
+                            ) : null}
                         </div>
                     )}
                 </div>
@@ -150,6 +235,22 @@ export const ApiSetupPanel: React.FC<ApiSetupPanelProps> = ({ onConfigured, onCl
                     </button>
                 </div>
             </div>
+             <style>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 8px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.2);
+                    border-radius: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255, 255, 255, 0.3);
+                }
+            `}</style>
         </div>
     );
 };

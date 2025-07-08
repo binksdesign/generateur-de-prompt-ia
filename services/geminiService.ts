@@ -1,5 +1,5 @@
 
-import { PromptData, PromptPartKey, PromptSegmentData, ApiConfig, ChatMessage } from './types';
+import { PromptData, PromptPartKey, PromptSegmentData, ApiConfig } from './types';
 
 const SITE_URL = "https://prompt-generator.app"; // Optional: Your app's URL for OpenRouter rankings
 const SITE_NAME = "Générateur de Prompt IA";   // Optional: Your app's name for OpenRouter rankings
@@ -7,7 +7,7 @@ const SITE_NAME = "Générateur de Prompt IA";   // Optional: Your app's name fo
 const FREE_MODEL_ID = "mistralai/mistral-small-3.2-24b-instruct:free";
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-const fileToDataUrl = (file: File): Promise<string> => {
+export const fileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -370,27 +370,9 @@ export const generateNewPart = async (config: ApiConfig, currentPrompt: PromptDa
     }
 };
 
-export const continueChat = async (config: ApiConfig, messages: ChatMessage[]): Promise<string | PromptData | null> => {
+export const continueChat = async (config: ApiConfig, apiMessages: any[], systemInstruction: string): Promise<string | PromptData | null> => {
     try {
-        const systemInstruction = `Tu es un chatbot expert en rédaction de prompts pour les générateurs d'images IA. Ton but est d'aider l'utilisateur à créer ou affiner un prompt.
-
-**Connaissances spécifiques :**
-- **Mockups :** Pour les mockups (t-shirts, etc.), tu sais qu'il faut utiliser la formule "Full blank [objet]" et ne jamais utiliser le mot "mockup" dans la sortie JSON.
-- **Structure de prompt :** Tu connais la structure JSON que l'application utilise : un objet avec des clés (sujet, style, etc.), où chaque clé a un objet avec "valeur" (string) et "alternatives" (array of 4 strings).
-
-**Instructions de réponse :**
-1.  **Réponse standard :** Réponds normalement en français, de manière concise et utile.
-2.  **Mise à jour du prompt :** Si l'utilisateur demande une modification qui doit mettre à jour le prompt (ex: "ajoute un champ pour la météo", "rends le style plus vintage"), tu DOIS répondre **UNIQUEMENT** avec l'objet JSON complet et mis à jour du prompt. Ne mets aucun texte avant ou après.
-    - Tu peux ajouter, supprimer ou modifier des clés dans le JSON pour répondre à la demande.
-    - Le JSON que tu renvoies doit être valide et suivre la structure {"clé": {"valeur": "...", "alternatives": [...]}}.
-
-**Exemple de demande de modification :**
-- User: "Ok, maintenant ajoute un champ 'ambiance' avec la valeur 'sombre et mystérieuse'"
-- Toi (réponse attendue) : {"sujet":{...},"style":{...},"éclairage":{...},"composition":{...},"détails":{...},"ambiance":{"valeur":"Sombre et mystérieuse","alternatives":["Nuit brumeuse","Clair de lune inquiétant","Néonoir pluvieux","Gothique et éthéré"]}}
-
-Ne réponds PAS avec du JSON si tu donnes juste un conseil ou une explication. Réponds avec le JSON **UNIQUEMENT** quand tu effectues une modification demandée par l'utilisateur.`;
-
-        const requestMessages = [{ role: 'system', content: systemInstruction }, ...messages];
+        const requestMessages = [{ role: 'system', content: systemInstruction }, ...apiMessages];
 
         const requestBody: any = {
             model: config.model,
@@ -401,6 +383,8 @@ Ne réponds PAS avec du JSON si tu donnes juste un conseil ou une explication. R
         const textResponse = data.choices[0].message.content;
 
         const potentialJson = parseJsonResponse<PromptData>(textResponse);
+        // Important: check if the parsed data is a valid prompt structure.
+        // This prevents normal JSON in conversation from being misinterpreted as a prompt update.
         if (potentialJson && isValidChatPromptUpdate(potentialJson)) {
             return potentialJson;
         }
